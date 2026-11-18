@@ -1,0 +1,688 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body><title>품사 땅따먹기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+/* 레이아웃: 상단 바 → (품사 지도 | 진행 패널) 2단, 좁으면 1단. 지도는 5언 섬 + 가운데 요새 다리 */
+:root{
+  color-scheme: light;
+  --sea:#CFE6EC; --sea-line:#B5D6DF;
+  --paper:#FFFDF7; --ink:#1F2B3D; --muted:#5E6B7A; --line:#D9DED8;
+  --accent:#E8553D; --gold:#F2B33D; --ok:#1E9E62; --no:#D9483B;
+  --che:#FBE2CF; --che-d:#E59A63;
+  --yong:#D6F0DC; --yong-d:#4FA86A;
+  --su:#E7DDF6; --su-d:#8C6BC4;
+  --gwan:#D6E8FA; --gwan-d:#4C88C7;
+  --dok:#FCF0C2; --dok-d:#C9A227;
+  --fort:#EEE7DA; --fort-d:#8A7354;
+  --f-display:'Do Hyeon','Noto Sans KR',system-ui,sans-serif;
+  --f-body:'Noto Sans KR',system-ui,-apple-system,'Apple SD Gothic Neo',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--sea);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.5;
+  background-image:radial-gradient(circle at 20% 30%, rgba(255,255,255,.35) 0 2px, transparent 3px),radial-gradient(circle at 70% 80%, rgba(255,255,255,.3) 0 2px, transparent 3px);
+  background-size:46px 46px, 60px 60px}
+button{font-family:inherit;cursor:pointer;color:inherit}
+button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.wrap{max-width:1440px;margin:0 auto;padding-block:14px 28px;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+
+/* 상단 바 */
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.brand{display:flex;flex-direction:column;line-height:1.05}
+.brand small{font:800 10px/1 var(--f-body);letter-spacing:.18em;color:var(--accent)}
+.brand b{font:400 30px/1.1 var(--f-display);letter-spacing:.01em}
+.top .sp{flex:1}
+.pill{background:var(--paper);border:2px solid var(--ink);border-radius:999px;padding:4px 14px;font-weight:700;font-variant-numeric:tabular-nums}
+.ibtn{background:var(--paper);border:2px solid var(--ink);border-radius:12px;padding:6px 12px;font-weight:700;box-shadow:0 3px 0 var(--ink)}
+.ibtn:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+
+/* 본문 2단 */
+.main{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:980px){.main{grid-template-columns:1fr}}
+
+/* 지도: 바다 위 5언 섬 + 가운데 해협의 쌍둥이 요새 */
+.mapbox{border-radius:26px;border:3px solid var(--ink);box-shadow:0 6px 0 var(--ink);overflow:hidden;background:var(--sea)}
+.mapbox svg{display:block;width:100%;height:auto}
+.mapcap{display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:8px 14px;background:var(--paper);border-top:3px solid var(--ink);font-size:13px;font-weight:600;color:var(--muted)}
+.mapcap b{color:var(--ink)}
+.hex .hx{transition:fill .3s}
+.hex.pop, .castle.pop{animation:pop .7s cubic-bezier(.3,1.6,.5,1);transform-box:fill-box;transform-origin:center}
+@keyframes pop{0%{transform:scale(.3) rotate(-10deg)}100%{transform:scale(1)}}
+.castle.can, .hex.can{cursor:pointer}
+.hex.can:hover .hx, .hex.can:focus-visible .hx{stroke:#E8553D;stroke-width:4}
+.hex.tgt .hx{stroke:#E8553D;stroke-width:5;animation:tgt 1s ease-in-out infinite}
+@keyframes tgt{50%{stroke-width:2}}
+.hex:focus{outline:none}
+.castle.pick .ring{animation:ring 1.1s ease-in-out infinite}
+@keyframes ring{50%{stroke-opacity:.15;stroke-width:12}}
+.castle.can:hover .islet, .castle.can:focus-visible .islet{fill:#FFE7A8}
+.castle:focus{outline:none}
+.castle:focus-visible .ring{stroke:var(--ink)}
+.wave{animation:bob 4s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(3px)}}
+
+/* 패널 */
+.panel{display:flex;flex-direction:column;gap:12px;position:sticky;top:max(12px, env(safe-area-inset-top, 0px))}
+@media (max-width:980px){.panel{position:static;order:-1}}
+.card{background:var(--paper);border:2.5px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 var(--ink);padding:16px}
+.turn{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 14px 4px 6px;background:var(--tc);color:#fff;font:400 22px/1.2 var(--f-display)}
+.chip i{font-style:normal;width:26px;height:26px;border-radius:50%;background:#fff;color:var(--tc);display:grid;place-items:center;font-size:16px}
+.turn .r{margin-left:auto;color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums}
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.big{border:2.5px solid var(--ink);border-radius:16px;padding:14px 10px;background:#fff;box-shadow:0 5px 0 var(--ink);text-align:center}
+.big b{display:block;font:400 24px/1.15 var(--f-display)}
+.big small{color:var(--muted);font-weight:600}
+.big.land{background:#FFF1E6} .big.fortb{background:#F4EDE1}
+.big:disabled{opacity:.45;cursor:not-allowed}
+.big:not(:disabled):active{transform:translateY(3px);box-shadow:0 2px 0 var(--ink)}
+.sent{font:500 clamp(20px,2.1vw,28px)/1.6 var(--f-body);margin:6px 0 4px;text-wrap:balance;word-break:keep-all}
+.sent u{text-decoration:none;background:linear-gradient(transparent 58%, #FFD44D 58%);font-weight:900;padding:0 2px;border-bottom:3px solid var(--ink)}
+.q{color:var(--muted);font-weight:700;font-size:14px}
+.ans{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.arow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.arow > span{width:52px;flex:none;font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.04em}
+.pbtn{flex:1 1 0;min-width:64px;border:2px solid var(--ink);border-radius:12px;background:#fff;padding:7px 4px;font:400 19px/1.1 var(--f-display);box-shadow:0 3px 0 var(--ink)}
+.pbtn:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.pbtn.sel{background:var(--ink);color:#fff}
+.pbtn.c-che{background:var(--che)} .pbtn.c-yong{background:var(--yong)} .pbtn.c-su{background:var(--su)} .pbtn.c-gwan{background:var(--gwan)} .pbtn.c-dok{background:var(--dok)}
+.pbtn.sel{background:var(--ink);color:#fff}
+.timer{height:8px;border-radius:99px;background:#EDEBE4;overflow:hidden;margin-top:10px}
+.timer i{display:block;height:100%;background:var(--accent);transition:width .25s linear}
+.tmtx{font-size:12px;color:var(--muted);font-weight:700;text-align:right;font-variant-numeric:tabular-nums;margin-top:2px}
+.res{border-radius:14px;padding:12px 14px;margin-top:10px;font-weight:600}
+.res.ok{background:#E3F5EA;border:2px solid var(--ok)}
+.res.no{background:#FCE6E3;border:2px solid var(--no)}
+.res.info{background:#F1EFE8;border:2px solid var(--line)}
+.res b.h{display:block;font:400 22px/1.2 var(--f-display);margin-bottom:2px}
+.res.ok b.h{color:var(--ok)} .res.no b.h{color:var(--no)}
+.row2{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn{border:2.5px solid var(--ink);border-radius:14px;padding:10px 18px;background:var(--gold);font:400 20px/1.1 var(--f-display);box-shadow:0 4px 0 var(--ink)}
+.btn.ghost{background:#fff}
+.btn:active{transform:translateY(2px);box-shadow:0 2px 0 var(--ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.steal{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.steal .chip{border:0;cursor:pointer}
+.fq{border:2px solid var(--line);border-radius:14px;padding:10px 12px;margin-top:10px;background:#fff}
+.fq .lab{font:400 18px/1 var(--f-display);color:var(--fort-d)}
+.fq .sent{font-size:clamp(18px,1.8vw,24px);margin:4px 0 6px}
+.mini{display:flex;flex-wrap:wrap;gap:5px}
+.mini .pbtn{flex:0 0 auto;min-width:0;padding:6px 10px;font-size:17px;box-shadow:0 2px 0 var(--ink)}
+.hint{color:var(--muted);font-size:14px;margin-top:8px}
+.step{margin-top:12px;font-weight:800;font-size:15px;color:var(--ink)}
+.step b{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;font-size:12px;margin-right:4px}
+.step.sm{margin-top:8px;font-size:13px}
+.means{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+@media (max-width:520px){.means{grid-template-columns:1fr}}
+.mopt{text-align:left;border:2px solid var(--ink);border-radius:12px;background:#fff;padding:7px 10px;font:600 14px/1.35 var(--f-body);box-shadow:0 2px 0 var(--ink);word-break:keep-all}
+.mopt:active{transform:translateY(2px);box-shadow:0 0 0 var(--ink)}
+.mopt.sel{background:var(--ink);color:#fff}
+.fq .mopt{font-size:13px;padding:6px 8px}
+.defl{font-weight:800;margin:2px 0 4px}
+.res.gold{background:#FFF3C9;border:2px solid var(--gold)}
+.res.gold b.h{color:#9A6A00}
+.tres{margin-top:8px;padding:8px 10px;border-radius:10px;background:#FFF3C9;border:2px dashed var(--gold);animation:pop .6s cubic-bezier(.3,1.6,.5,1)}
+.mapbox.gold{border-color:#B8860B;box-shadow:0 0 0 5px var(--gold), 0 8px 0 var(--ink)}
+.mapbox.gold svg{filter:saturate(1.15) sepia(.18)}
+.pill.goldp{background:#FFF3C9;border-color:#B8860B}
+.ev{display:grid;gap:8px}
+.ev > div{background:#fff;border:2px solid var(--line);border-radius:12px;padding:8px 12px;font-size:14.5px}
+.ev b:first-child{display:block;font:400 18px/1.3 var(--f-display)}
+.gifts{display:block;margin-top:4px;color:var(--muted);font-weight:700;font-size:13px}
+
+/* 점수판 */
+.score h3{margin:0 0 8px;font:400 22px/1 var(--f-display)}
+.srow{display:grid;grid-template-columns:auto 1fr auto auto auto auto auto;align-items:center;gap:10px;padding:6px 4px;border-top:1.5px dashed var(--line);font-variant-numeric:tabular-nums}
+.srow:first-of-type{border-top:0}
+.srow .dot{width:16px;height:16px;border-radius:50%;background:var(--tc);border:2px solid var(--ink)}
+.srow .nm{font-weight:800}
+.srow .m{font-size:13px;color:var(--muted);font-weight:600}
+.srow .t{font:400 24px/1 var(--f-display);min-width:42px;text-align:right}
+.srow.now{background:#FFF6DB;border-radius:10px}
+
+/* 시작 화면 */
+.hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:22px;align-items:start;margin-top:8px}
+@media (max-width:860px){.hero{grid-template-columns:1fr}}
+.hero h1{font:400 clamp(44px,7vw,84px)/1 var(--f-display);margin:0 0 10px;letter-spacing:-.01em}
+.hero h1 em{font-style:normal;color:var(--accent)}
+.hero p.lead{font-size:18px;max-width:34em;margin:0 0 14px}
+.book{background:var(--paper);border:2.5px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 var(--ink);padding:0 18px 16px;
+  background-image:repeating-linear-gradient(transparent 0 31px, rgba(31,43,61,.045) 31px 32px)}
+.book-h{display:flex;align-items:baseline;gap:10px;margin:0 -18px 6px;padding:12px 18px;background:var(--ink);color:#fff;border-radius:16px 16px 0 0}
+.book-h b{font:400 26px/1 var(--f-display);letter-spacing:.02em}
+.book-h small{margin-left:auto;font-weight:700;opacity:.8}
+.book section{padding:10px 0;border-top:2px dashed var(--line)}
+.book section:first-of-type{border-top:0}
+.book h3{margin:0 0 6px;font:400 20px/1.2 var(--f-display)}
+.book p{margin:0;font-size:15px}
+.goal p{font-size:16px}
+.ico{width:26px;height:26px;flex:none;vertical-align:middle}
+.kit{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:520px){.kit{grid-template-columns:1fr}}
+.kit > div{display:grid;grid-template-columns:auto 1fr;column-gap:8px;align-items:center;background:#fff;border:2px solid var(--line);border-radius:12px;padding:6px 10px}
+.kit .ico{grid-row:span 2;width:32px;height:32px}
+.kit b{font-size:14px} .kit small{color:var(--muted);font-size:12px}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.steps li{display:flex;gap:10px;align-items:flex-start;font-size:14.5px}
+.steps li b.t{display:block;font-size:15.5px}
+.sn{flex:none;width:30px;height:30px;border-radius:50%;background:var(--gold);border:2px solid var(--ink);display:grid;place-items:center;font:400 18px/1 var(--f-display)}
+.ptab{width:100%;border-collapse:collapse;font-size:14.5px;font-variant-numeric:tabular-nums}
+.ptab td{padding:4px 6px;border-bottom:1px solid var(--line)}
+.ptab td .ico{width:20px;height:20px;margin-right:4px}
+.ptab .plus{color:var(--ok);font:400 20px/1 var(--f-display);text-align:right;padding-right:14px}
+.ptab .minus{color:var(--no);font:400 20px/1 var(--f-display);text-align:right}
+.pnote{margin-top:6px!important;font-size:13px!important;color:var(--muted);font-weight:700}
+.notes{margin:0;padding-left:18px;font-size:14.5px;display:flex;flex-direction:column;gap:2px}
+
+.rules{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.rules li{display:flex;gap:10px;align-items:flex-start;background:rgba(255,255,255,.7);border-radius:14px;padding:10px 12px;border:2px solid rgba(31,43,61,.15)}
+.rules li b.k{flex:none;font:400 18px/1.4 var(--f-display);background:var(--ink);color:#fff;border-radius:8px;padding:0 8px}
+.set h3{margin:0 0 6px;font:400 20px/1.2 var(--f-display)}
+.opts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.opt{border:2px solid var(--ink);background:#fff;border-radius:12px;padding:8px 14px;font:400 19px/1 var(--f-display);box-shadow:0 3px 0 var(--ink)}
+.opt.on{background:var(--ink);color:#fff}
+.teams{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+
+/* 결과 */
+.endg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:860px){.endg{grid-template-columns:1fr}}
+.podium h2{font:400 40px/1 var(--f-display);margin:0 0 12px}
+.rank{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;margin-bottom:8px;background:#fff;border:2px solid var(--line)}
+.rank .no{font:400 30px/1 var(--f-display);width:34px;text-align:center}
+.rank.first{background:#FFF3C9;border-color:var(--gold)}
+.rank .t{margin-left:auto;font:400 30px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.list{display:flex;flex-direction:column;gap:8px}
+.li{background:#fff;border:2px solid var(--line);border-radius:12px;padding:8px 12px}
+.li .s{font-weight:600}
+.li .s u{text-decoration:none;border-bottom:2.5px solid var(--ink);background:linear-gradient(transparent 60%, #FFE58A 60%);font-weight:900}
+.li .a{font-size:14px;color:var(--muted)}
+.li .a b{color:var(--ink)}
+.confirm{display:flex;gap:6px;align-items:center;background:#fff;border:2px solid var(--no);border-radius:12px;padding:4px 6px 4px 12px;font-weight:700}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap" id="app"></div>
+
+<script>
+/* ===== 데이터 ===== */
+const ISLANDS = [
+  { key:'che', name:'체언', sub:'명사·대명사·수사', poses:['명사','대명사','수사'] },
+  { key:'yong', name:'용언', sub:'동사·형용사', poses:['동사','형용사'] },
+  { key:'su', name:'수식언', sub:'관형사·부사', poses:['관형사','부사'] },
+  { key:'gwan', name:'관계언', sub:'조사', poses:['조사'] },
+  { key:'dok', name:'독립언', sub:'감탄사', poses:['감탄사'] },
+];
+const ISL_OF = {}; ISLANDS.forEach(i => i.poses.forEach(p => ISL_OF[p] = i.key));
+const ISLE_NAME = { che:'초록섬', yong:'주황섬', su:'보라섬', gwan:'파랑섬', dok:'노랑섬' };
+const VILLAGE = { '명사':'솔숲 마을', '대명사':'모래 마을', '수사':'등대 마을', '동사':'풍차 마을', '형용사':'언덕 마을',
+  '관형사':'꽃밭 마을', '부사':'샘물 마을', '조사':'구름 마을', '감탄사':'무지개 마을' };
+const DEF = {
+  '명사':'대상의 이름을 나타내는 단어',
+  '대명사':'사람, 사물, 장소 등의 이름을 대신하여 가리키는 단어',
+  '수사':'수량이나 순서를 나타내는 단어',
+  '동사':'사람이나 사물의 움직임을 나타내는 단어',
+  '형용사':'사람이나 사물의 성질이나 상태를 나타내는 단어',
+  '관형사':'체언을 꾸며 주는 단어',
+  '부사':'주로 용언을 꾸며 주는 단어',
+  '조사':'주로 체언 뒤에 붙어 그 말과 다른 말의 문법적 관계를 나타내거나 뜻을 더해 주는 단어',
+  '감탄사':'느낌, 부름, 대답 등을 나타내는 단어',
+};
+const LAND_PEN = 1, STEAL_PEN = 2, FORT_PEN = 2;
+const CELLS = 4;
+const POS_ORDER = ['명사','대명사','수사','동사','형용사','관형사','부사','조사','감탄사'];
+const landNo = (p, k) => POS_ORDER.indexOf(p) * CELLS + k + 1;
+
+/* [ ]안이 밑줄 친 말 */
+const CARDS = [
+  ['[사랑]은 모든 것을 이겨 낸다.','명사','‘사랑’이라는 대상의 이름을 나타내요.'],
+  ['우리는 [운동장]에서 축구를 했다.','명사','장소의 이름을 나타내요.'],
+  ['[오늘]은 소풍 가는 날이다.','명사','날의 이름을 나타내고 조사 ‘은’과 결합했어요.'],
+  ['할머니께서 [떡]을 만드셨다.','명사','음식의 이름을 나타내요.'],
+  ['[바다]가 정말 넓다.','명사','대상의 이름을 나타내고 조사 ‘가’와 결합했어요.'],
+  ['[나]는 국어 시간이 제일 좋아.','대명사','말하는 사람을 대신 가리켜요.'],
+  ['[여기]가 우리 학교야.','대명사','장소를 대신 가리켜요.'],
+  ['[우리]는 같은 반이다.','대명사','말하는 사람을 포함한 여럿을 대신 가리켜요.'],
+  ['[이것]을 들어 줄래?','대명사','사물을 대신 가리키고 조사 ‘을’과 결합했어요.'],
+  ['[누구]를 기다리니?','대명사','모르는 사람을 가리켜요.'],
+  ['바구니에 사과 [셋]이 있다.','수사','수량을 나타내고 조사 ‘이’와 결합했어요.'],
+  ['[일곱]에서 셋을 빼면 넷이다.','수사','수량을 나타내고 조사 ‘에서’와 결합했어요.'],
+  ['[둘]이 함께 걸어갔다.','수사','수량을 나타내고 조사 ‘이’와 결합했어요.'],
+  ['달리기에서 [첫째]로 들어왔다.','수사','순서를 나타내고 조사 ‘로’와 결합했어요.'],
+  ['[하나]만 골라 보세요.','수사','수량을 나타내고 조사 ‘만’과 결합했어요.'],
+  ['동생이 공원에서 [뛴다].','동사','움직임을 나타내고 ‘-ㄴ/는-’과 결합해요.'],
+  ['나는 매일 일기를 [쓴다].','동사','움직임을 나타내고 ‘-ㄴ/는-’과 결합해요.'],
+  ['아기가 방긋 [웃는다].','동사','움직임을 나타내고 ‘-ㄴ/는-’과 결합해요.'],
+  ['봄이 되자 꽃이 [핀다].','동사','움직임(변화)을 나타내고 ‘-ㄴ/는-’과 결합해요.'],
+  ['친구에게 편지를 [보냈다].','동사','움직임을 나타내요. ‘보내라’, ‘보내자’처럼 쓸 수 있어요.'],
+  ['하늘이 정말 [파랗다].','형용사','대상의 성질이나 상태를 나타내요.'],
+  ['이 떡볶이는 너무 [맵다].','형용사','대상의 성질이나 상태를 나타내요.'],
+  ['동생은 마음이 [넓다].','형용사','성질이나 상태를 나타내요. ‘-ㄴ/는-’과 결합할 수 없어요.'],
+  ['교실이 아주 [조용하다].','형용사','대상의 성질이나 상태를 나타내요.'],
+  ['그 이야기는 정말 [재미있다].','형용사','대상의 성질이나 상태를 나타내요.'],
+  ['[새] 신발을 신고 학교에 갔다.','관형사','명사 ‘신발’을 수식해요.'],
+  ['[헌] 옷을 모아 기부했다.','관형사','명사 ‘옷’을 수식해요.'],
+  ['[저] 건물이 우리 학교야.','관형사','명사 ‘건물’을 수식해요. 조사와 결합하지 않아요.'],
+  ['[모든] 학생이 운동장에 모였다.','관형사','명사 ‘학생’을 수식해요.'],
+  ['사과 [두] 개를 먹었다.','관형사','단위를 나타내는 명사 ‘개’를 수식해요.'],
+  ['거북이가 [천천히] 걸어간다.','부사','동사 ‘걸어간다’를 수식해요.'],
+  ['오늘은 [매우] 춥다.','부사','형용사 ‘춥다’를 수식해요.'],
+  ['동생이 [빨리] 달린다.','부사','동사 ‘달린다’를 수식해요.'],
+  ['우리는 [함께] 노래를 불렀다.','부사','동사 ‘불렀다’를 수식해요.'],
+  ['우리는 [자주] 만난다.','부사','동사 ‘만난다’를 수식해요.'],
+  ['꽃[이] 활짝 피었다.','조사','체언 ‘꽃’ 뒤에 붙어 문법적 관계를 나타내요.'],
+  ['나[도] 같이 갈래.','조사','체언 ‘나’ 뒤에 붙어 뜻을 더해요.'],
+  ['친구[와] 공원에 갔다.','조사','체언 ‘친구’ 뒤에 붙어 문법적 관계를 나타내요.'],
+  ['너[만] 믿을게.','조사','체언 ‘너’ 뒤에 붙어 뜻을 더해요.'],
+  ['이것은 내 가방[이다].','조사','체언 ‘가방’ 뒤에 붙어 서술어가 되게 해요.'],
+  ['[아], 정말 아름답구나!','감탄사','느낌을 나타내는 감탄사예요.'],
+  ['[네], 알겠습니다.','감탄사','대답을 나타내는 감탄사예요.'],
+  ['[야], 같이 가자!','감탄사','상대를 부르는 감탄사예요.'],
+  ['[어머나], 깜짝이야!','감탄사','느낌을 나타내는 감탄사예요.'],
+  ['[응], 나도 갈게.','감탄사','대답을 나타내는 감탄사예요.'],
+].map(([s,p,why], id) => ({ id, s, p, why }));
+
+const FORTS = [
+  { n:'훈민정음', w:'이', q:[['[이] 책 좀 봐.','관형사','명사 ‘책’을 수식해요.'], ['[이]보다 더 좋을 수는 없다.','대명사','어떤 대상을 대신 가리키고 조사 ‘보다’와 결합했어요.']] },
+  { n:'집현전', w:'그', q:[['[그] 사람은 누구니?','관형사','명사 ‘사람’을 수식해요.'], ['[그]는 매일 운동한다.','대명사','사람을 대신 가리키고 조사 ‘는’과 결합했어요.']] },
+  { n:'세종', w:'다섯', q:[['[다섯] 명이 왔다.','관형사','단위를 나타내는 명사 ‘명’을 수식해요.'], ['[다섯]에 둘을 더하면 일곱이다.','수사','수량을 나타내고 조사 ‘에’와 결합했어요.']] },
+  { n:'한글', w:'열', q:[['연필 [열] 자루를 샀다.','관형사','단위를 나타내는 명사 ‘자루’를 수식해요.'], ['하나부터 [열]까지 세어 봐.','수사','수량을 나타내고 조사 ‘까지’와 결합했어요.']] },
+  { n:'낱말', w:'크다', q:[['나무가 쑥쑥 [큰다].','동사','‘자라다’의 뜻으로 움직임을 나타내고 ‘-ㄴ/는-’과 결합해요.'], ['그 나무는 정말 [크다].','형용사','상태를 나타내요.']] },
+  { n:'문장', w:'밝다', q:[['어느새 날이 [밝는다].','동사','밤이 지나 새날이 오는 움직임을 나타내고 ‘-ㄴ/는-’과 결합해요.'], ['오늘따라 달이 참 [밝다].','형용사','상태를 나타내요.']] },
+  { n:'문단', w:'내일', q:[['[내일]이 기다려진다.','명사','날의 이름을 나타내고 조사 ‘이’와 결합했어요.'], ['우리 [내일] 만나자.','부사','동사 ‘만나자’를 수식해요.']] },
+  { n:'맞춤법', w:'모두', q:[['[모두]가 운동장에 모였다.','명사','조사 ‘가’와 결합해 주어로 쓰였어요.'], ['숙제를 [모두] 끝냈다.','부사','동사 ‘끝냈다’를 수식해요.']] },
+  { n:'표준어', w:'그래', q:[['[그래], 같이 가자.','감탄사','대답을 나타내는 감탄사예요.'], ['정말 [그래]?','형용사','‘그렇다’가 활용한 말로 상태를 나타내요.']] },
+];
+
+const TEAM_COLORS = ['#E8553D','#2F80C8','#2E9E5B','#8A5BD0','#E09B1A','#D04C8E'];
+const FORT_PTS = 3;
+
+/* ===== 상태 ===== */
+let S = freshState();
+function freshState(){
+  return { phase:'setup', nTeams:4, rounds:6, timer:30, muted:false,
+    teams:[], turn:0, round:1, cells:{}, forts:[], deck:[], card:null,
+    mode:'choose', stealer:null, fi:null, fpick:[{},{}], fopts:[[],[]], pick:{}, mopts:[], pen:[], bonus:[], shield:[], treasure:{}, pendingExtra:null, goldAnn:false, res:null, log:[], lastCell:null, lastFort:null, confirmEnd:false, tEnd:0 };
+}
+function shuffle(a){ a = a.slice(); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function startGame(){
+  S.teams = Array.from({ length:S.nTeams }, (_, i) => ({ name:`${i+1}모둠`, color:TEAM_COLORS[i] }));
+  S.cells = {}; ISLANDS.forEach(i => i.poses.forEach(p => S.cells[p] = Array(CELLS).fill(-1)));
+  S.forts = FORTS.map(() => -1);
+  S.deck = shuffle(CARDS.map(c => c.id));
+  S.turn = 0; S.round = 1; S.mode = 'choose'; S.log = []; S.phase = 'play'; S.res = null; S.pen = S.teams.map(() => 0); S.bonus = S.teams.map(() => 0); S.shield = S.teams.map(() => false); S.pendingExtra = null; S.goldAnn = false;
+  const spots = shuffle(POS_ORDER.flatMap(p => [0,1,2,3].map(k => p + ':' + k))).slice(0, 4), gifts = shuffle(['plus2','shield','extra','miss']);
+  S.treasure = {}; spots.forEach((s, i) => S.treasure[s] = gifts[i]);
+}
+const T = i => S.teams[i];
+const landCount = t => Object.values(S.cells).flat().filter(o => o === t).length;
+const fortCount = t => S.forts.filter(o => o === t).length;
+const penOf = t => S.pen[t] || 0;
+const bonusOf = t => S.bonus[t] || 0;
+const score = t => landCount(t) + fortCount(t) * FORT_PTS - penOf(t) + bonusOf(t);
+const golden = () => S.phase === 'play' && S.rounds && S.round === S.rounds;
+/* 감점: 방패가 있으면 한 번 막고, 황금 라운드는 2배 */
+function addPen(team, n){
+  if (S.shield[team]){ S.shield[team] = false; return { amt:0, note:'🛡️ 감점 방패로 막았어요!' }; }
+  const amt = golden() ? n * 2 : n; S.pen[team] = penOf(team) + amt; return { amt, note:'' };
+}
+const GIFT = { plus2:'🎁 보물 상자: <b>+2점</b> 보너스!', shield:'🎁 보물 상자: <b>감점 방패</b>! 다음에 도전에 실패해도 한 번은 감점이 없어요.', extra:'🎁 보물 상자: <b>빈 땅 1칸</b>을 더 차지할 수 있어요!', miss:'🎁 보물 상자: <b>꽝!</b> 상자가 비어 있어요.' };
+function openTreasure(team, p, k){
+  const key = p + ':' + k, g = S.treasure[key]; if (!g) return '';
+  delete S.treasure[key]; SFX.fort();
+  if (g === 'plus2') S.bonus[team] = bonusOf(team) + 2;
+  if (g === 'shield') S.shield[team] = true;
+  if (g === 'extra'){ if (Object.values(S.cells).flat().includes(-1)) S.pendingExtra = team; else { S.bonus[team] = bonusOf(team) + 1; return GIFT.extra.replace('빈 땅 1칸을 더 차지할 수 있어요!', '빈 땅이 없어서 +1점을 받아요.'); } }
+  return GIFT[g];
+}
+const meanOpts = p => shuffle([p, ...shuffle(POS_ORDER.filter(x => x !== p)).slice(0, 3)]);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const sentHTML = s => esc(s).replace(/\[(.+?)\]/, '<u>$1</u>');
+const target = s => s.match(/\[(.+?)\]/)[1];
+function josa(w, a, b){ const c = w.charCodeAt(w.length - 1); if (c < 0xAC00 || c > 0xD7A3) return b; return (c - 0xAC00) % 28 ? a : b; }
+
+/* ===== 효과음 ===== */
+let AC = null;
+function tone(f, d, type, v, w){ if (S.muted) return; try{ AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume();
+  const t0 = AC.currentTime + (w || 0), o = AC.createOscillator(), g = AC.createGain(); o.type = type || 'sine'; o.frequency.setValueAtTime(f, t0);
+  g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(v || .12, t0 + .01); g.gain.exponentialRampToValueAtTime(.0001, t0 + d);
+  o.connect(g).connect(AC.destination); o.start(t0); o.stop(t0 + d + .02); }catch(e){} }
+const SFX = {
+  ok(){ tone(660,.12,'triangle'); tone(990,.18,'triangle',.12,.1); },
+  bad(){ tone(220,.25,'sawtooth',.06); tone(180,.3,'sawtooth',.05,.12); },
+  claim(){ [523,659,784].forEach((f,i) => tone(f,.14,'square',.05,i*.08)); },
+  fort(){ [392,523,659,784,1047].forEach((f,i) => tone(f,.2,'triangle',.11,i*.1)); },
+  tick(){ tone(880,.08,'square',.05); tone(880,.08,'square',.05,.15); },
+  click(){ tone(500,.05,'triangle',.06); },
+};
+
+/* ===== 타이머 ===== */
+let tmHandle = null;
+function startTimer(){ stopTimer(); if (!S.timer) return; S.tEnd = Date.now() + S.timer * 1000; S.tFired = false; tmHandle = setInterval(tickTimer, 250); }
+function stopTimer(){ if (tmHandle){ clearInterval(tmHandle); tmHandle = null; } }
+function tickTimer(){
+  const left = Math.max(0, S.tEnd - Date.now()), bar = document.getElementById('tmb'), tx = document.getElementById('tmt');
+  if (bar) bar.style.width = (left / (S.timer * 1000) * 100) + '%';
+  if (tx) tx.textContent = left ? `${Math.ceil(left / 1000)}초` : '시간 끝!';
+  if (!left && !S.tFired){ S.tFired = true; SFX.tick(); stopTimer(); }
+}
+const timerHTML = () => S.timer ? `<div class="timer"><i id="tmb" style="width:100%"></i></div><div class="tmtx" id="tmt">${S.timer}초</div>` : '';
+
+/* ===== 그리기 ===== */
+function topHTML(){
+  const play = S.phase === 'play';
+  return `<div class="top">
+    <div class="brand"><small>CHAESSAEM</small><b>품사 땅따먹기</b></div>
+    <span class="sp"></span>
+    ${play ? `<span class="pill ${golden() ? 'goldp' : ''}">${golden() ? '⭐ 황금 라운드 · ' : ''}${S.rounds ? `${S.round} / ${S.rounds} 라운드` : `${S.round} 라운드`}</span>` : ''}
+    ${play && !S.rounds ? `<button class="ibtn" data-act="goldNext">⭐ 다음 라운드를 황금 라운드로</button>` : ''}
+    <button class="ibtn" data-act="mute" aria-label="소리 켜기/끄기">${S.muted ? '🔇' : '🔊'}</button>
+    ${play ? (S.confirmEnd ? `<span class="confirm">게임을 끝낼까요? <button class="ibtn" data-act="end">끝내기</button><button class="ibtn" data-act="noend">계속</button></span>` : `<button class="ibtn" data-act="askend">게임 끝내기</button>`) : ''}
+  </div>`;
+}
+/* 섬 지도 좌표 (viewBox 1000×640) */
+const R = 33, HW = R * Math.sqrt(3) / 2;
+const REG = { '명사':[125,172], '대명사':[265,172], '수사':[405,172], '동사':[665,172], '형용사':[815,172],
+  '관형사':[122,566], '부사':[262,566], '조사':[505,566], '감탄사':[840,566] };
+const ISL_C = { che:{ g:'#BFE3A5', d:'#6FA35A', sign:[40,62] }, yong:{ g:'#FBD3A8', d:'#D9822B', sign:[580,62] },
+  su:{ g:'#D8CDEB', d:'#8C6BC4', sign:[36,458] }, gwan:{ g:'#C7DDF3', d:'#4C88C7', sign:[424,458] }, dok:{ g:'#F4E3A1', d:'#C9A227', sign:[758,458] } };
+const HEX_FILL = { che:'#F3FAEE', yong:'#FFF4E8', su:'#F5F0FC', gwan:'#EEF5FD', dok:'#FFF9E0' };
+const FORT_XY = FORTS.map((_, i) => [70 + i * 107.5, 368]);
+const hexPts = (x, y) => Array.from({ length:6 }, (_, k) => { const a = Math.PI / 180 * (60 * k - 90); return `${(x + R * Math.cos(a)).toFixed(1)},${(y + R * Math.sin(a)).toFixed(1)}`; }).join(' ');
+const diamond = ([x, y]) => [[x, y - 1.5 * R], [x - HW - 1, y], [x + HW + 1, y], [x, y + 1.5 * R]];
+function houseSVG(x, y){
+  return `<g transform="translate(${x} ${y}) scale(1.05)"><path d="M-12 -2 L0 -13 L12 -2 Z" fill="#fff" stroke="#1F2B3D" stroke-width="1.6" stroke-linejoin="round"/>
+    <rect x="-9" y="-2" width="18" height="14" rx="1.5" fill="#fff" stroke="#1F2B3D" stroke-width="1.6"/>
+    <rect x="-3" y="4" width="6" height="8" fill="#1F2B3D"/></g>`;
+}
+function castleSVG(i){
+  const [x, y] = FORT_XY[i], o = S.forts[i], own = o >= 0, pick = S.mode === 'pickFort' && !own, can = (!own || (golden() && o !== S.turn)) && (S.mode === 'pickFort' || S.mode === 'choose'), f = FORTS[i];
+  const stone = own ? '#E9E1D2' : '#D6CEC0', col = own ? T(o).color : '#1F2B3D';
+  const cren = (x0, w, yy) => { let d = ''; for (let k = 0; k < w / 6; k += 2) d += `<rect x="${x0 + k * 6}" y="${yy - 5}" width="6" height="6" fill="${stone}" stroke="#1F2B3D" stroke-width="1.4"/>`; return d; };
+  return `<g class="castle ${pick ? 'pick' : ''} ${can ? 'can' : ''} ${S.lastFort === i ? 'pop' : ''}" ${can ? `data-act="fort" data-i="${i}" role="button" tabindex="0" aria-label="${f.n} 요새 공격하기"` : `aria-label="${f.n} 요새${own ? ', ' + T(o).name : ''}"`}>
+    <ellipse class="islet" cx="${x}" cy="${y + 20}" rx="38" ry="18" fill="#E8D8B0" stroke="#B89A62" stroke-width="2"/>
+    ${pick ? `<ellipse class="ring" cx="${x}" cy="${y + 20}" rx="44" ry="23" fill="none" stroke="#E8553D" stroke-width="5"/>` : ''}
+    <rect x="${x - 22}" y="${y - 14}" width="44" height="30" fill="${stone}" stroke="#1F2B3D" stroke-width="1.8"/>${cren(x - 22, 44, y - 14)}
+    <rect x="${x - 9}" y="${y - 34}" width="18" height="22" fill="${stone}" stroke="#1F2B3D" stroke-width="1.8"/>${cren(x - 9, 18, y - 34)}
+    <path d="M${x - 6} ${y + 16} v-9 a6 6 0 0 1 12 0 v9 z" fill="#6B4E2E" stroke="#1F2B3D" stroke-width="1.4"/>
+    <line x1="${x}" y1="${y - 39}" x2="${x}" y2="${y - 60}" stroke="#1F2B3D" stroke-width="2"/>
+    <path d="M${x} ${y - 60} l${own ? 30 : 14} ${own ? 9 : 5} l-${own ? 30 : 14} ${own ? 9 : 5} z" fill="${own ? col : '#fff'}" stroke="#1F2B3D" stroke-width="1.4"/>
+    ${own ? `<text x="${x + 11}" y="${y - 46}" text-anchor="middle" font-family="Do Hyeon,sans-serif" font-size="13" fill="#fff">${o + 1}</text>` : ''}
+    <g transform="translate(${x} ${y + 48})"><path d="M${-(f.n.length * 9 + 12)} -11 h${f.n.length * 18 + 24} l-6 11 l6 11 h-${f.n.length * 18 + 24} l6 -11 z" fill="${own ? col : '#FFFDF7'}" stroke="#1F2B3D" stroke-width="1.6"/>
+    <text y="6" text-anchor="middle" font-family="Do Hyeon,Noto Sans KR,sans-serif" font-size="17" fill="${own ? '#fff' : '#1F2B3D'}">${f.n}</text></g>
+  </g>`;
+}
+function mapHTML(){
+  const lands = [], hexes = [], labels = [], signs = [];
+  ISLANDS.forEach(isl => {
+    const c = ISL_C[isl.key], base = isl.poses.map(p => REG[p]), cs = base.flatMap((pt, k) => k ? [[(pt[0] + base[k - 1][0]) / 2, pt[1]], pt] : [pt]);
+    lands.push({ c, cs });
+    isl.poses.forEach(p => {
+      const [rx, ry] = REG[p];
+      diamond(REG[p]).forEach(([x, y], k) => {
+        const o = S.cells[p][k], own = o >= 0, pop = S.lastCell && S.lastCell[0] === p && S.lastCell[1] === k;
+        const no = landNo(p, k);
+        const bp = S.mode === 'bonusPick' && o < 0, can = (S.mode === 'choose' && o !== S.turn) || bp, tgt = S.target && S.target.p === p && S.target.k === k && S.mode !== 'choose';
+        hexes.push(`<g class="hex ${pop ? 'pop' : ''} ${can ? 'can' : ''} ${tgt ? 'tgt' : ''}" ${can ? `data-act="${bp ? 'bonusLand' : 'land'}" data-p="${p}" data-k="${k}" role="button" tabindex="0"` : ''} aria-label="${no}번 땅 ${own ? T(o).name : '빈 땅'}"><polygon class="hx" points="${hexPts(x, y)}" fill="${own ? T(o).color : HEX_FILL[isl.key]}" stroke="#1F2B3D" stroke-width="2" stroke-linejoin="round"/>
+          ${own ? `${houseSVG(x, y + 9)}<text x="${x}" y="${y - 10}" text-anchor="middle" font-family="Do Hyeon,Noto Sans KR,sans-serif" font-size="16" fill="#fff" stroke="#1F2B3D" stroke-width="3" paint-order="stroke">${no}</text>`
+            : `<text x="${x}" y="${y + 8}" text-anchor="middle" font-family="Do Hyeon,Noto Sans KR,sans-serif" font-size="23" fill="${c.d}">${no}</text>`}</g>`);
+      });
+      labels.push(`<g transform="translate(${rx} ${ry + 96})"><rect x="${-(VILLAGE[p].length * 8 + 12)}" y="-14" width="${VILLAGE[p].length * 16 + 24}" height="26" rx="13" fill="#FFFDF7" stroke="#1F2B3D" stroke-width="1.8"/>
+        <text y="6" text-anchor="middle" font-family="Do Hyeon,Noto Sans KR,sans-serif" font-size="17" fill="#1F2B3D">${VILLAGE[p]}</text></g>`);
+    });
+    const [sx, sy] = c.sign, nm = ISLE_NAME[isl.key], w = nm.length * 22 + 22;
+    signs.push(`<g transform="translate(${sx} ${sy})"><line x1="12" y1="12" x2="12" y2="40" stroke="#6B4E2E" stroke-width="4"/>
+      <rect x="0" y="-14" width="${w}" height="30" rx="5" fill="#C98F55" stroke="#1F2B3D" stroke-width="2"/>
+      <text x="${w / 2}" y="9" text-anchor="middle" font-family="Do Hyeon,Noto Sans KR,sans-serif" font-size="22" fill="#fff">${nm}</text></g>`);
+  });
+  const blob = (r, fill, extra) => lands.map(({ c, cs }) => cs.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${typeof fill === 'function' ? fill(c) : fill}" ${extra || ''}/>`).join('')).join('');
+  const waves = [[470,90],[520,250],[930,270],[20,270],[640,470],[690,670],[380,672],[960,660],[560,30],[650,440]].map(([x, y]) =>
+    `<path class="wave" d="M${x} ${y} q8 -7 16 0 q8 7 16 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".7"/>`).join('');
+  const route = `<path d="M${FORT_XY[0][0]} ${FORT_XY[0][1] + 20} ${FORT_XY.slice(1).map(([x, y]) => `L${x} ${y + 20}`).join(' ')}" fill="none" stroke="#8A7354" stroke-width="6" stroke-dasharray="2 9" stroke-linecap="round" opacity=".55"/>`;
+  return `<div class="map"><div class="mapbox ${golden() ? 'gold' : ''}"><svg viewBox="0 0 1000 700" role="img" aria-label="품사 대륙 지도">
+    <defs><pattern id="seaP" width="40" height="40" patternUnits="userSpaceOnUse"><rect width="40" height="40" fill="#BFE0EA"/><circle cx="8" cy="10" r="1.6" fill="#D9EEF3"/><circle cx="28" cy="30" r="1.4" fill="#D9EEF3"/></pattern></defs>
+    <rect width="1000" height="700" fill="url(#seaP)"/>${waves}
+    ${blob(122, '#E4F3F6', 'opacity=".9"')}${blob(110, '#1F2B3D')}${blob(107, '#EED9A6')}${blob(96, c => c.g)}
+    ${route}${hexes.join('')}${signs.join('')}
+    ${FORTS.map((_, i) => castleSVG(i)).join('')}
+    <g transform="translate(672 600)"><g class="wave"><path d="M-30 0 h60 l-10 16 h-40 z" fill="#C98F55" stroke="#1F2B3D" stroke-width="2" stroke-linejoin="round"/><line x1="0" y1="0" x2="0" y2="-40" stroke="#1F2B3D" stroke-width="2.4"/><path d="M2 -38 l24 30 h-24 z" fill="#FFFDF7" stroke="#1F2B3D" stroke-width="1.8"/></g></g>
+    <g transform="translate(948 52)"><circle r="24" fill="#FFFDF7" stroke="#1F2B3D" stroke-width="2"/><path d="M0 -18 L5 0 L0 18 L-5 0 Z" fill="#E8553D" stroke="#1F2B3D" stroke-width="1.2"/><text y="-27" text-anchor="middle" font-size="11" font-weight="800" fill="#1F2B3D">N</text></g>
+  </svg>
+  </div></div>`;
+}
+function ansHTML(act, sel){
+  return `<div class="ans">${ISLANDS.map(i => `<div class="arow"><span>${i.name}</span>${i.poses.map(p =>
+    `<button class="pbtn c-${i.key} ${sel === p ? 'sel' : ''}" data-act="${act}" data-p="${p}">${p}</button>`).join('')}</div>`).join('')}</div>`;
+}
+function miniHTML(n, sel){
+  return `<div class="mini">${ISLANDS.flatMap(i => i.poses.map(p => `<button class="pbtn c-${i.key} ${sel === p ? 'sel' : ''}" data-act="fsel" data-n="${n}" data-p="${p}">${p}</button>`)).join('')}</div>`;
+}
+function meanHTML(opts, sel, act, n){
+  return `<div class="means">${opts.map(p => `<button class="mopt ${sel === p ? 'sel' : ''}" data-act="${act}" ${n != null ? `data-n="${n}"` : ''} data-p="${p}">${DEF[p]}</button>`).join('')}</div>`;
+}
+const chip = (t, extra) => `<span class="chip" style="--tc:${T(t).color}" ${extra || ''}><i>${t + 1}</i>${T(t).name}</span>`;
+function panelHTML(){
+  const t = S.turn, c = S.card;
+  let body = '';
+  if (S.mode === 'choose'){
+    const left = S.forts.filter(o => o < 0).length;
+    body = `${golden() ? `<div class="res gold"><b class="h">⭐ 황금 라운드</b>얻는 점수와 깎이는 점수가 모두 2배! 다른 모둠의 요새도 빼앗을 수 있어요.</div>` : ''}<div class="res info"><b class="h">지도에서 도전할 곳을 고르세요.</b></div>
+      <div class="choice">
+      <div class="big land"><b>🏠 땅</b><small>문장 1개 · ${golden() ? '2점 ⭐' : '1점'}</small></div>
+      <div class="big fortb"><b>🏰 요새</b><small>${left || golden() ? `문장 2개 · ${golden() ? FORT_PTS * 2 + '점 ⭐' : FORT_PTS + '점'}` : '남은 요새 없음'}</small></div></div>
+`;
+  } else if (S.mode === 'bonusPick'){
+    body = `<div class="res gold"><b class="h">🎁 보물: 빈 땅 1칸 더!</b>${T(S.pendingExtra).name}이 차지할 빈 땅을 지도에서 고르세요.</div>`;
+  } else if (S.mode === 'pickFort'){
+    body = `<div class="res info"><b class="h">공격할 요새를 고르세요</b>지도에서 반짝이는 요새를 누르세요.</div>
+      <div class="row2"><button class="btn ghost" data-act="back">← 돌아가기</button></div>`;
+  } else if (S.mode === 'land' || S.mode === 'stealAns'){
+    const who = S.mode === 'stealAns' ? S.stealer : t;
+    body = `${targetHTML()}${S.mode === 'stealAns' ? `<div class="q" style="margin-top:6px">가로채기 도전 · ${chip(who)}</div>` : ''}
+      <div class="sent">${sentHTML(c.s)}</div>
+      <div class="step"><b>①</b> 밑줄 친 말의 품사는?</div>${ansHTML('pick', S.pick.p)}
+      <div class="step"><b>②</b> 그 품사의 의미는?</div>${meanHTML(S.mopts, S.pick.m, 'mpick')}
+      ${timerHTML()}
+      <div class="row2"><button class="btn" data-act="judgeLand" ${S.pick.p && S.pick.m ? '' : 'disabled'}>판정하기</button>${S.mode === 'land' ? `<button class="btn ghost" data-act="back">← 다시 고르기</button>` : ''}</div>`;
+  } else if (S.mode === 'steal'){
+    const others = S.teams.map((_, i) => i).filter(i => i !== t);
+    body = `${targetHTML()}<div class="sent">${sentHTML(c.s)}</div>
+      <div class="res no"><b class="h">아쉬워요! ${S.res.note ? '' : `(−${S.res.pen}점)`}</b>${S.res.note ? `<div>${S.res.note}</div>` : ''}품사나 의미가 틀렸어요. 가로챌 모둠이 있나요?</div>
+      <div class="steal">${others.map(i => `<button class="chip" style="--tc:${T(i).color}" data-act="stealer" data-t="${i}"><i>${i + 1}</i>${T(i).name}</button>`).join('')}</div>
+      <div class="row2"><button class="btn ghost" data-act="reveal">가로채기 없이 넘어가기</button></div>`;
+  } else if (S.mode === 'result'){
+    const r = S.res;
+    body = `<div class="sent">${sentHTML(c.s)}</div>
+      ${r.ok ? `<div class="res ok"><b class="h">정답! ${c.p}</b><div class="defl">${c.p}: ${DEF[c.p]}</div>‘${esc(target(c.s))}’ — ${esc(c.why)}${r.claim ? `<div style="margin-top:6px">${r.claim}</div>` : ''}</div>`
+        : `<div class="res no"><b class="h">아쉬워요! ${r.note ? '' : `(−${r.pen}점)`}</b>품사나 의미가 틀렸어요. 정답은 공개하지 않아요.${r.note ? `<div style="margin-top:6px">${r.note}</div>` : ''}</div>`}
+      <div class="row2">${S.pendingExtra != null ? `<button class="btn" data-act="bonusGo">🎁 빈 땅 고르기</button>` : `<button class="btn" data-act="next">${isLastTurn() ? '결과 보기 ▶' : '다음 모둠 ▶'}</button>`}</div>`;
+  } else if (S.mode === 'fort'){
+    const f = FORTS[S.fi];
+    const ready = S.fpick.every(x => x.p && x.m);
+    body = `<div class="q" style="margin-top:10px">🏰 ${f.n} 요새 공격 · 두 문장의 품사와 의미를 모두 맞혀야 해요</div>
+      ${f.q.map((q, n) => `<div class="fq"><span class="lab">${n ? '문장 B' : '문장 A'}</span><div class="sent">${sentHTML(q[0])}</div>
+        <div class="step sm"><b>①</b> 품사</div>${miniHTML(n, S.fpick[n].p)}<div class="step sm"><b>②</b> 의미</div>${meanHTML(S.fopts[n], S.fpick[n].m, 'fmean', n)}</div>`).join('')}
+      ${timerHTML()}
+      <div class="row2"><button class="btn" data-act="judgeFort" ${ready ? '' : 'disabled'}>판정하기</button><button class="btn ghost" data-act="back">← 다시 고르기</button></div>`;
+  } else if (S.mode === 'fortResult'){
+    const f = FORTS[S.fi], r = S.res;
+    body = `<div class="q" style="margin-top:10px">🏰 ${f.n} 요새</div>
+      <div class="res ${r.ok ? 'ok' : 'no'}"><b class="h">${r.ok ? '요새 함락!' : `함락 실패 ${r.pn && r.pn.note ? '' : `(−${r.pn ? r.pn.amt : FORT_PEN}점)`}`}</b>${r.ok ? `${T(t).name}이 ${r.prev >= 0 ? T(r.prev).name + '의 ' : ''}${f.n} 요새를 차지했어요. (+${golden() ? FORT_PTS * 2 + '점 ⭐' : FORT_PTS + '점'})` : `두 문장 중 ${r.wrong}개가 틀렸어요. 요새는 그대로 남아요.${r.pn && r.pn.note ? `<div>${r.pn.note}</div>` : ''}`}</div>
+      ${r.ok ? f.q.map(q => `<div class="li" style="margin-top:8px"><div class="s">${sentHTML(q[0])}</div><div class="a"><b>${q[1]}</b>(${DEF[q[1]]}) — ${esc(q[2])}</div></div>`).join('') : ''}
+      <div class="row2"><button class="btn" data-act="next">${isLastTurn() ? '결과 보기 ▶' : '다음 모둠 ▶'}</button></div>`;
+  }
+  const rows = S.teams.map((tm, i) => `<div class="srow ${i === t ? 'now' : ''}" style="--tc:${tm.color}"><span class="dot"></span><span class="nm">${tm.name}</span>
+    <span class="m">땅 ${landCount(i)}</span><span class="m">요새 ${fortCount(i)}</span><span class="m">보너스 ${bonusOf(i) ? '+' + bonusOf(i) : 0}</span><span class="m">감점 ${penOf(i) ? '−' + penOf(i) : 0}</span><span class="t">${S.shield[i] ? '<small title="감점 방패">🛡️</small>' : ''}${score(i)}</span></div>`).join('');
+  return `<div class="panel">
+    <div class="card"><div class="turn">${chip(t)}<b style="font:400 22px/1 var(--f-display)">차례</b></div>${body}</div>
+    <div class="card score"><h3>점수판</h3>${rows}</div>
+  </div>`;
+}
+function setupHTML(){
+  const o = (act, v, cur, label) => `<button class="opt ${v === cur ? 'on' : ''}" data-act="${act}" data-v="${v}">${label}</button>`;
+  const hexI = c => `<svg class="ico" viewBox="0 0 40 40" aria-hidden="true"><polygon points="20,3 35,11.5 35,28.5 20,37 5,28.5 5,11.5" fill="${c}" stroke="#1F2B3D" stroke-width="2.4"/></svg>`;
+  const fortI = `<svg class="ico" viewBox="0 0 40 40" aria-hidden="true"><rect x="8" y="16" width="24" height="18" fill="#D6CEC0" stroke="#1F2B3D" stroke-width="2"/><rect x="15" y="6" width="10" height="12" fill="#D6CEC0" stroke="#1F2B3D" stroke-width="2"/><path d="M17 34v-6a3 3 0 0 1 6 0v6z" fill="#6B4E2E"/><line x1="20" y1="6" x2="20" y2="0" stroke="#1F2B3D" stroke-width="1.6"/><path d="M20 0l8 2.5-8 2.5z" fill="#E8553D"/></svg>`;
+  const cardI = `<svg class="ico" viewBox="0 0 40 40" aria-hidden="true"><rect x="7" y="4" width="26" height="32" rx="4" fill="#FFFDF7" stroke="#1F2B3D" stroke-width="2"/><path d="M12 15h16M12 21h10" stroke="#1F2B3D" stroke-width="2" stroke-linecap="round"/><path d="M12 24.5h10" stroke="#FFD44D" stroke-width="3"/></svg>`;
+  return `<div class="hero">
+    <div class="book">
+      <div class="book-h"><b>게임 설명서</b></div>
+      <section class="goal"><h3>🏆 게임 목표</h3><p>문장 속 밑줄 친 말의 <b>품사</b>와 그 품사의 <b>의미</b>를 맞혀 품사 대륙의 땅과 요새를 차지하세요. 게임이 끝났을 때 점수가 가장 높은 모둠이 이겨요.</p></section>
+      <section><h3>📦 구성</h3>
+        <div class="kit"><div>${hexI('#F3FAEE')}<b>땅 36칸</b><small>1~36번</small></div><div>${fortI}<b>쌍둥이 요새 9개</b><small>훈민정음 외</small></div><div>${cardI}<b>문장 카드 45장</b><small>밑줄 친 말</small></div></div></section>
+      <section><h3>🎲 차례 진행</h3>
+        <ol class="steps">
+          <li><span class="sn">1</span><div><b class="t">도전할 곳 외치기</b>모둠이 땅 번호나 요새 이름을 외쳐요.</div></li>
+          <li><span class="sn">2</span><div><b class="t">카드 풀기</b>모둠에서 한 명씩 번갈아 칠판에 나와 밑줄 친 말의 품사와 그 품사의 의미를 직접 눌러요. 모둠 친구들은 조언해 줄 수 있어요. 요새는 쌍둥이 문장 2개를 모두 풀어요.</div></li>
+          <li><span class="sn">3</span><div><b class="t">판정</b>둘 다 맞으면 그곳을 차지해요. 틀리면 점수가 깎여요.</div></li>
+        </ol></section>
+      <section><h3>🧮 점수표</h3>
+        <table class="ptab"><tbody>
+          <tr><td>${hexI('#FFF4E8')} 땅 차지·빼앗기</td><td class="plus">+1</td><td>도전 실패</td><td class="minus">−${LAND_PEN}</td></tr>
+          <tr><td>${fortI} 요새 함락</td><td class="plus">+${FORT_PTS}</td><td>빼앗기 실패</td><td class="minus">−${STEAL_PEN}</td></tr>
+          <tr><td colspan="2"></td><td>요새 공격 실패</td><td class="minus">−${FORT_PEN}</td></tr>
+        </tbody></table></section>
+      <section><h3>⚠️ 특별 규칙</h3>
+        <ul class="notes"><li>요새는 빼앗기지 않아요. 단, <b>황금 라운드</b>에는 빼앗을 수 있어요.</li><li>도전에 실패하면 <b>정답은 공개되지 않아요</b>. 틀린 문장 카드는 카드 더미에 다시 섞여요.</li></ul></section>
+      <section><h3>✨ 이벤트</h3>
+        <div class="ev"><div><b>🎁 보물 땅</b>지도 어딘가에 보물 땅 4곳이 숨어 있어요. 보물 땅을 처음 차지한 모둠은 보물 상자를 열어요. <span class="gifts">+2점 · 감점 방패 · 빈 땅 1칸 더 · 꽝</span></div>
+        <div><b>⭐ 황금 라운드</b>마지막 라운드는 황금 라운드예요. 얻는 점수와 깎이는 점수가 모두 <b>2배</b>가 되고, 다른 모둠의 요새도 빼앗을 수 있어요.</div></div></section>
+      <section><h3>🏁 게임 끝</h3><p>황금 라운드까지 끝나면 게임이 끝나요. ‘제한 없음’일 때는 선생님이 ‘다음 라운드를 황금 라운드로’ 버튼을 눌러요. 점수가 같으면 요새를 더 많이 가진 모둠이 이겨요.</p></section>
+    </div>
+    <div class="card set">
+      <h3>모둠 수</h3><div class="opts">${[2,3,4,5,6].map(n => o('nTeams', n, S.nTeams, `${n}모둠`)).join('')}</div>
+      <div class="teams">${Array.from({ length:S.nTeams }, (_, i) => `<span class="chip" style="--tc:${TEAM_COLORS[i]}"><i>${i + 1}</i>${i + 1}모둠</span>`).join('')}</div>
+      <h3>라운드</h3><div class="opts">${[4,6,8].map(n => o('rounds', n, S.rounds, `${n}라운드`)).join('')}${o('rounds', 0, S.rounds, '제한 없음')}</div>
+      <h3>답하는 시간</h3><div class="opts">${o('timer', 0, S.timer, '끄기')}${o('timer', 30, S.timer, '30초')}${o('timer', 60, S.timer, '60초')}</div>
+      <div class="row2"><button class="btn" data-act="start">게임 시작 ▶</button></div>
+    </div>
+  </div>`;
+}
+function endHTML(){
+  const order = S.teams.map((_, i) => i).sort((a, b) => score(b) - score(a) || fortCount(b) - fortCount(a));
+  let rank = 0, prev = null;
+  const ranks = order.map((i, k) => { if (score(i) !== prev){ rank = k + 1; prev = score(i); } return `<div class="rank ${rank === 1 ? 'first' : ''}" style="--tc:${T(i).color}"><span class="no">${rank === 1 ? '👑' : rank}</span>${chip(i)}<span class="m" style="color:var(--muted);font-weight:600">땅 ${landCount(i)} · 요새 ${fortCount(i)} · 보너스 ${bonusOf(i)} · 감점 ${penOf(i)}</span><span class="t">${score(i)}</span></div>`; }).join('');
+  const forts = FORTS.map((f, i) => `<div class="li"><div class="a" style="margin-bottom:2px">${f.n} 요새 (‘${f.w}’) ${S.forts[i] >= 0 ? `· ${T(S.forts[i]).name}` : '· 주인 없음'}</div>${f.q.map(q => `<div class="s">${sentHTML(q[0])} <span class="a">→ <b>${q[1]}</b> (${esc(q[2])})</span></div>`).join('')}</div>`).join('');
+  const wrong = S.log.length ? S.log.map(c => `<div class="li"><div class="s">${sentHTML(c.s)}</div><div class="a"><b>${c.p}</b>(${DEF[c.p]}) — ${esc(c.why)}</div></div>`).join('') : '<div class="hint">틀린 땅 카드가 없어요!</div>';
+  return `<div class="endg">
+    <div class="card podium"><h2>품사 대륙의 주인은?</h2>${ranks}<div class="row2"><button class="btn" data-act="restart">다시 하기</button></div></div>
+    <div class="card"><h3 style="margin:0 0 8px;font:400 22px/1 var(--f-display)">헷갈렸던 땅 카드</h3><div class="list">${wrong}</div></div>
+    <div class="card" style="grid-column:1/-1"><h3 style="margin:0 0 8px;font:400 22px/1 var(--f-display)">쌍둥이 요새 정답</h3><div class="list">${forts}</div></div>
+  </div>`;
+}
+function render(){
+  const app = document.getElementById('app');
+  let body = '';
+  if (S.phase === 'setup') body = setupHTML();
+  else if (S.phase === 'play') body = `<div class="main">${mapHTML()}${panelHTML()}</div>`;
+  else body = endHTML();
+  app.innerHTML = topHTML() + body;
+  S.lastCell = null; S.lastFort = null;
+}
+
+/* ===== 진행 ===== */
+const isLastTurn = () => S.rounds && S.round === S.rounds && S.turn === S.teams.length - 1;
+function drawCard(){
+  if (!S.deck.length) S.deck = shuffle(CARDS.map(c => c.id));
+  S.card = CARDS[S.deck.pop()]; S.pick = {}; S.mopts = meanOpts(S.card.p);
+}
+function reshuffleCard(){ if (S.card && !S.deck.includes(S.card.id)) S.deck.splice(Math.floor(Math.random() * (S.deck.length + 1)), 0, S.card.id); }
+function targetHTML(){
+  if (!S.target) return '';
+  const { p, k } = S.target, o = S.cells[p][k];
+  return `<div class="q" style="margin-top:10px">🎯 <b style="color:var(--ink)">${landNo(p, k)}번 땅</b> 도전 · ${o >= 0 ? `${T(o).name} 땅 빼앗기 (실패하면 −${STEAL_PEN}점)` : '빈 땅 차지하기'}</div>`;
+}
+function claimAt(team, p, k){
+  const prev = S.cells[p][k], no = landNo(p, k);
+  if (prev === team) return `${T(team).name}이 <b>${no}번 땅</b>을 지켜 냈어요!`;
+  S.cells[p][k] = team; S.lastCell = [p, k];
+  const g = golden(); if (g) S.bonus[team] = bonusOf(team) + 1;
+  const pts = g ? '(+2점 ⭐)' : '(+1점)';
+  let msg = prev >= 0 ? `${T(team).name}이 ${T(prev).name}의 <b>${no}번 땅</b>을 빼앗았어요! ${pts}` : `${T(team).name}이 <b>${no}번 땅</b>을 차지했어요. ${pts}`;
+  if (prev < 0){ const tr = openTreasure(team, p, k); if (tr) msg += `<div class="tres">${tr}</div>`; }
+  return msg;
+}
+function claimLand(team, pos){
+  const arr = S.cells[pos], k = arr.indexOf(-1);
+  if (k >= 0){ arr[k] = team; S.lastCell = [pos, k]; return `${T(team).name}이 <b>${landNo(pos, k)}번 ${pos}</b> 땅을 차지했어요. (+1점)`; }
+  const counts = {}; arr.forEach(o => { if (o !== team) counts[o] = (counts[o] || 0) + 1; });
+  const victims = Object.keys(counts).map(Number);
+  if (!victims.length) return `<b>${pos}</b> 땅은 이미 ${T(team).name}이 모두 가지고 있어요.`;
+  victims.sort((a, b) => counts[b] - counts[a] || score(b) - score(a));
+  const v = victims[0], kk = arr.lastIndexOf(v); arr[kk] = team; S.lastCell = [pos, kk];
+  return `<b>${pos}</b> 땅이 꽉 차서 ${T(v).name}의 <b>${landNo(pos, kk)}번</b> 땅을 빼앗았어요! (+1점)`;
+}
+function nextTurn(){
+  if (isLastTurn()){ S.phase = 'end'; stopTimer(); SFX.fort(); return; }
+  S.turn++; if (S.turn >= S.teams.length){ S.turn = 0; S.round++; if (golden()) SFX.fort(); }
+  S.mode = 'choose'; S.card = null; S.res = null; S.stealer = null; S.target = null; S.fi = null; S.fpick = [{}, {}]; S.pick = {};
+}
+const actions = {
+  nTeams(el){ S.nTeams = +el.dataset.v; },
+  rounds(el){ S.rounds = +el.dataset.v; },
+  timer(el){ S.timer = +el.dataset.v; },
+  start(){ startGame(); SFX.claim(); },
+  mute(){ S.muted = !S.muted; },
+  askend(){ S.confirmEnd = true; },
+  noend(){ S.confirmEnd = false; },
+  end(){ S.confirmEnd = false; S.phase = 'end'; stopTimer(); },
+  restart(){ const keep = { nTeams:S.nTeams, rounds:S.rounds, timer:S.timer, muted:S.muted }; S = Object.assign(freshState(), keep); stopTimer(); },
+  draw(){ drawCard(); S.mode = 'land'; SFX.click(); return 'timer'; },
+  land(el){ const p = el.dataset.p, k = +el.dataset.k; if (S.mode !== 'choose' || S.cells[p][k] === S.turn) return; S.target = { p, k }; drawCard(); S.mode = 'land'; SFX.click(); return 'timer'; },
+  pickFort(){ S.mode = 'pickFort'; SFX.click(); },
+  back(){ if (S.mode === 'land' && S.card){ S.deck.splice(Math.floor(Math.random() * (S.deck.length + 1)), 0, S.card.id); S.card = null; } S.mode = 'choose'; S.target = null; S.fi = null; S.fpick = [{}, {}]; stopTimer(); },
+  fort(el){ S.fi = +el.dataset.i; S.fpick = [{}, {}]; S.fopts = FORTS[S.fi].q.map(q => meanOpts(q[1])); S.mode = 'fort'; SFX.click(); return 'timer'; },
+  fsel(el){ S.fpick[+el.dataset.n].p = el.dataset.p; SFX.click(); return 'keep'; },
+  fmean(el){ S.fpick[+el.dataset.n].m = el.dataset.p; SFX.click(); return 'keep'; },
+  pick(el){ S.pick.p = el.dataset.p; SFX.click(); return 'keep'; },
+  mpick(el){ S.pick.m = el.dataset.p; SFX.click(); return 'keep'; },
+  judgeLand(){
+    const c = S.card, ok = S.pick.p === c.p && S.pick.m === c.p; stopTimer();
+    if (S.mode === 'land'){
+      if (ok){ SFX.ok(); SFX.claim(); S.res = { ok:true, claim:claimAt(S.turn, S.target.p, S.target.k) }; S.mode = 'result'; }
+      else { SFX.bad(); const pn = addPen(S.turn, S.cells[S.target.p][S.target.k] >= 0 ? STEAL_PEN : LAND_PEN); S.res = { ok:false, pen:pn.amt, note:pn.note }; S.mode = 'result'; S.log.push(c); reshuffleCard(); }
+    } else {
+      if (ok){ SFX.ok(); SFX.claim(); S.res = { ok:true, claim:`가로채기 성공! ` + claimAt(S.stealer, S.target.p, S.target.k) }; }
+      else { SFX.bad(); const pn = addPen(S.stealer, LAND_PEN); S.res = { ok:false, claim:`${T(S.stealer).name}의 가로채기도 실패했어요. ${pn.note || `(−${pn.amt}점)`}` }; reshuffleCard(); }
+      S.mode = 'result';
+    }
+  },
+  stealer(el){ S.stealer = +el.dataset.t; S.pick = {}; S.mopts = meanOpts(S.card.p); S.mode = 'stealAns'; SFX.click(); return 'timer'; },
+  reveal(){ S.res = { ok:false, claim:'' }; S.mode = 'result'; reshuffleCard(); },
+  judgeFort(){
+    const f = FORTS[S.fi]; stopTimer();
+    const wrong = f.q.filter((q, n) => S.fpick[n].p !== q[1] || S.fpick[n].m !== q[1]).length;
+    let pn = null; const prev = S.forts[S.fi];
+    if (!wrong){ S.forts[S.fi] = S.turn; S.lastFort = S.fi; SFX.fort(); if (golden()) S.bonus[S.turn] = bonusOf(S.turn) + FORT_PTS; }
+    else { SFX.bad(); pn = addPen(S.turn, FORT_PEN); }
+    S.res = { ok:!wrong, wrong, prev, pn }; S.mode = 'fortResult';
+  },
+  next(){ nextTurn(); SFX.click(); },
+  bonusGo(){ S.mode = 'bonusPick'; SFX.click(); },
+  bonusLand(el){
+    const p = el.dataset.p, k = +el.dataset.k, team = S.pendingExtra; if (S.mode !== 'bonusPick' || S.cells[p][k] >= 0) return;
+    S.pendingExtra = null; SFX.claim();
+    const msg = claimAt(team, p, k);
+    S.res = { ok:true, claim:(S.res && S.res.claim ? S.res.claim + '<div style="margin-top:6px">' : '<div>') + '🎁 ' + msg + '</div>' };
+    S.mode = S.fi != null ? 'fortResult' : 'result';
+  },
+  goldNext(){ S.rounds = S.turn === 0 ? S.round : S.round + 1; SFX.click(); },
+};
+document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('.castle.can, .hex.can')){ e.preventDefault(); e.target.closest('.castle.can, .hex.can').dispatchEvent(new MouseEvent('click', { bubbles:true })); } });
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const fn = actions[el.dataset.act]; if (!fn) return;
+  const r = fn(el);
+  if (r === 'keep'){ // 요새 선택: 타이머 유지하며 다시 그리기
+    const keepEnd = S.tEnd; render(); if (S.timer && keepEnd){ S.tEnd = keepEnd; tickTimer(); } return;
+  }
+  render();
+  if (r === 'timer') startTimer();
+  else if (tmHandle) tickTimer();
+});
+
+/* 열린 화면에서 업데이트돼도 진행 상태 유지 */
+function boot(data){ if (data && data.S && data.S.phase){ S = Object.assign(freshState(), data.S); S.confirmEnd = false; } render(); if (S.mode === 'land' || S.mode === 'stealAns' || S.mode === 'fort') startTimer(); }
+try{ window.claude?.hot?.snapshot?.(() => ({ S })); }catch(e){}
+window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
+</script>
+</body></html>
